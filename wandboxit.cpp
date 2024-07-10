@@ -127,7 +127,7 @@ int main(const int argc, const char** argv)
             default_standard = "c++2b";
         } else if (ends_with(*found, ".c")) {
             default_compiler = "gcc-head-c";
-            default_standard = "c99";
+            default_standard = "c11";
         }
     }
 
