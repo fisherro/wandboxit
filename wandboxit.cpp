@@ -1,6 +1,4 @@
-/*
-   Send code to be compiled and run by wandbox.
-*/
+/* Send code to be compiled and run by wandbox. */
 
 #include "nlohmann/json.hpp"
 #include <curl/curl.h>
@@ -92,19 +90,22 @@ namespace {
     {
         return std::equal(suffix.rbegin(), suffix.rend(), s.rbegin());
     }
-}
 
-std::string get_option(std::vector<std::string>& args, const std::string& option_name, const std::string& default_value)
-{
-    //TODO: Handle if the same option is given twice.
-    std::string option{"--" + option_name + "="};
-    auto found{
-        std::find_if(args.begin(), args.end(),
-                [&option](auto arg){ return starts_with(arg, option); })};
-    if (args.end() == found) return default_value;
-    auto value{found->substr(option.size())};
-    args.erase(found);
-    return value;
+    std::string get_option(
+            std::vector<std::string>& args,
+            const std::string& option_name,
+            const std::string& default_value)
+    {
+        //TODO: Handle if the same option is given twice.
+        std::string option{"--" + option_name + "="};
+        auto found{
+            std::find_if(args.begin(), args.end(),
+                    [&option](auto arg){ return starts_with(arg, option); })};
+        if (args.end() == found) return default_value;
+        auto value{found->substr(option.size())};
+        args.erase(found);
+        return value;
+    }
 }
 
 int main(const int argc, const char** argv)
