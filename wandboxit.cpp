@@ -81,13 +81,37 @@ namespace {
 		}
 		return response;
 	}
+
+	bool starts_with(const std::string& s, std::string_view prefix)
+	{
+		return 0 == s.rfind(prefix, 0);
+	}
+}
+
+std::string get_option(std::vector<std::string>& args, const std::string& option_name, const std::string& default_value)
+{
+	//TODO: Handle if the same option is given twice.
+	std::string option{"--" + option_name + "="};
+	auto found{std::find_if(args.begin(), args.end(), [&option](auto arg){ return starts_with(arg, option); })};
+	if (args.end() == found) return default_value;
+	auto value{found->substr(option.size())};
+	args.erase(found);
+	return value;
 }
 
 int main(const int argc, const char** argv)
 {
+	//TODO: An options to get language, compiler, and standard options.
+
 	// The fstream ctors still don't take string_views!?
 	// So we'll parse the args into strings instead.
 	std::vector<std::string> args(argv + 1, argv + argc);
+
+	auto compiler = get_option(args, "compiler", "gcc-head");
+	auto standard = get_option(args, "std", "c++2b");
+
+	//TODO: Use a C standard option if using a C compiler.
+
 	if (args.empty()) {
 		std::cerr << "Give me the name of a file to compile!\n";
 		return EXIT_FAILURE;
@@ -95,8 +119,8 @@ int main(const int argc, const char** argv)
 	std::ifstream file(args[0]);
 	std::string code(std::istreambuf_iterator<char>{file}, {});
 	nlohmann::json jrequest = {
-		{ "options", "warning,gnu++17" },
-		{ "compiler", "gcc-head"},
+		{ "options", "warning,"s + standard },
+		{ "compiler", compiler },
 	};
 	jrequest["code"] = code;
 	std::string request{jrequest.dump()};
