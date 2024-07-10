@@ -8,6 +8,7 @@
 #include <fstream>
 #include <vector>
 #include <set>
+#include <optional>
 
 using namespace std::literals;
 
@@ -111,20 +112,30 @@ namespace {
         return std::equal(suffix.rbegin(), suffix.rend(), s.rbegin());
     }
 
-    std::string get_option(
+    std::optional<std::string> get_option(
             std::vector<std::string>& args,
-            const std::string& option_name,
-            const std::string& default_value)
+            const std::string& option_name)
     {
         //TODO: Handle if the same option is given twice.
         std::string option{"--" + option_name + "="};
         auto found{
             std::find_if(args.begin(), args.end(),
                     [&option](auto arg){ return starts_with(arg, option); })};
-        if (args.end() == found) return default_value;
+        if (args.end() == found) return std::nullopt;
         auto value{found->substr(option.size())};
         args.erase(found);
         return value;
+    }
+
+    bool get_flag(
+            std::vector<std::string>& args,
+            const std::string& flag_name)
+    {
+        std::string flag{"--"s + flag_name};
+        auto found{std::find(args.begin(), args.end(), flag)};
+        if (args.end() == found) return false;
+        args.erase(found);
+        return true;
     }
 
     auto get_languages(const nlohmann::json& info)
@@ -209,36 +220,58 @@ int main(const int argc, const char** argv)
     // So we'll parse the args into strings instead.
     std::vector<std::string> args(argv + 1, argv + argc);
 
-    std::string default_compiler{"gcc-head"};
-    std::string default_standard{"c++2b"};
-    //TODO: This could be done better...
-    auto found{
-        std::find_if(args.begin(), args.end(),
-                [](auto arg){ return not starts_with(arg, "--"); })};
-    if (args.end() != found) {
-        if (ends_with(*found, ".cpp")) {
-            default_compiler = "gcc-head";
-            default_standard = "c++2b";
-        } else if (ends_with(*found, ".c")) {
-            default_compiler = "gcc-head-c";
-            default_standard = "c11";
+    if (get_flag(args, "list-languages")) {
+        auto info{nlohmann::json::parse(get_info())};
+        auto list{get_languages(info)};
+        std::copy(list.begin(), list.end(),
+                std::ostream_iterator<std::string>(std::cout, "\n"));
+        return EXIT_SUCCESS;
+    } else if (get_flag(args, "list-compilers")) {
+        if (args.size() != 1) {
+            std::cerr << "Give me the name of a language!\n";
+            return EXIT_FAILURE;
         }
+        auto info{nlohmann::json::parse(get_info())};
+        auto list{get_compilers(info, args[0])};
+        std::copy(list.begin(), list.end(),
+                std::ostream_iterator<std::string>(std::cout, "\n"));
+        return EXIT_SUCCESS;
+    } else if (get_flag(args, "list-standards")) {
+        if (args.size() != 1) {
+            std::cerr << "Give me the name of a compiler!\n";
+            return EXIT_FAILURE;
+        }
+        auto info{nlohmann::json::parse(get_info())};
+        auto list{get_standards(info, args[0])};
+        std::copy(list.begin(), list.end(),
+                std::ostream_iterator<std::string>(std::cout, "\n"));
+         return EXIT_SUCCESS;
     }
 
-    auto compiler = get_option(args, "compiler", "gcc-head");
-    auto standard = get_option(args, "std", "c++2b");
+    auto compiler = get_option(args, "compiler");
+    auto standard = get_option(args, "std");
+    if (not standard) standard = get_option(args, "standard");
 
-    //TODO: Use a C standard option if using a C compiler.
-
-    if (args.empty()) {
-        std::cerr << "Give me the name of a file to compile!\n";
+    if (args.size() != 1) {
+        std::cerr << "Give me the name of a single file to compile!\n";
         return EXIT_FAILURE;
     }
-    std::ifstream file(args[0]);
+
+    auto filename{args[0]};
+
+    if (ends_with(filename, ".c")) {
+        if (not compiler) compiler = "gcc-head-c";
+        if (not standard) standard = "c11";
+    } else {
+        if (not compiler) compiler = "gcc-head";
+        if (not standard) standard = "c++17";
+    }
+
+    std::ifstream file(filename);
     std::string code(std::istreambuf_iterator<char>{file}, {});
     nlohmann::json jrequest = {
-        { "options", "warning,"s + standard },
-        { "compiler", compiler },
+        { "options", "warning,"s + *standard },
+        { "compiler", *compiler },
     };
     jrequest["code"] = code;
     std::string request{jrequest.dump()};
