@@ -87,6 +87,11 @@ namespace {
     {
         return 0 == s.rfind(prefix, 0);
     }
+
+    bool ends_with(const std::string& s, std::string_view suffix)
+    {
+        return std::equal(suffix.rbegin(), suffix.rend(), s.rbegin());
+    }
 }
 
 std::string get_option(std::vector<std::string>& args, const std::string& option_name, const std::string& default_value)
@@ -109,6 +114,22 @@ int main(const int argc, const char** argv)
     // The fstream ctors still don't take string_views!?
     // So we'll parse the args into strings instead.
     std::vector<std::string> args(argv + 1, argv + argc);
+
+    std::string default_compiler{"gcc-head"};
+    std::string default_standard{"c++2b"};
+    //TODO: This could be done better...
+    auto found{
+        std::find_if(args.begin(), args.end(),
+                [](auto arg){ return not starts_with(arg, "--"); })};
+    if (args.end() != found) {
+        if (ends_with(*found, ".cpp")) {
+            default_compiler = "gcc-head";
+            default_standard = "c++2b";
+        } else if (ends_with(*found, ".c")) {
+            default_compiler = "gcc-head-c";
+            default_standard = "c99";
+        }
+    }
 
     auto compiler = get_option(args, "compiler", "gcc-head");
     auto standard = get_option(args, "std", "c++2b");
