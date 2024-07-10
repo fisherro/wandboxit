@@ -2,28 +2,6 @@
 Send code to be compiled and run by wandbox.
 */
 
-// g++-mp-13 -std=c++17 wandbox.cpp -o wandbox -lcurl
-
-/*
-// Example request
-{
-    "code": "...",
-    "options": "warning,gnu++1y",
-    "compiler": "gcc-head",
-    "compiler-option-raw": "-Dx=hogefuga\n-O3"
-}
-// Example submission
-$ curl -H "Content-type: application/json" -d @test.json https://wandbox.org/api/compile.json
-// Example response
-{
-    "status": 0,
-    "compiler_message": "...",
-    "program_message": "...",
-    "compiler_error": "...",
-    "program_output": "..."
-}
-*/
-
 #include "nlohmann/json.hpp"
 #include <curl/curl.h>
 #include <iostream>
@@ -31,6 +9,8 @@ $ curl -H "Content-type: application/json" -d @test.json https://wandbox.org/api
 #include <iterator>
 #include <fstream>
 #include <vector>
+
+using namespace std::literals;
 
 namespace {
 	size_t curl_callback(
@@ -46,35 +26,59 @@ namespace {
 		return total;
 	}
 
+	struct curl_initer {
+		explicit curl_initer() { curl_global_init(CURL_GLOBAL_DEFAULT); }
+		~curl_initer() { curl_global_cleanup(); }
+	};
+
+	using curl_ptr = std::unique_ptr<CURL, decltype(&curl_easy_cleanup)>;
+	curl_ptr make_curl()
+	{
+		CURL* curl = curl_easy_init();
+		if (not curl) {
+			throw std::runtime_error{"curl_easy_init failed"};
+		}
+		return curl_ptr{curl, &curl_easy_cleanup};
+	}
+
+	struct slist
+	{
+		curl_slist* list{nullptr};
+		explicit slist(){}
+		~slist() { if (list) curl_slist_free_all(list); }
+		slist(const slist&) = delete;
+		slist(slist&&) = delete;
+		void append(const std::string& s)
+		{
+			curl_slist* temp{curl_slist_append(list, s.c_str())};
+			if (not temp) {
+				throw std::runtime_error{"curl_slist_append("s + s + ")"};
+			} else {
+				list = temp;
+			}
+		}
+	};
+
 	std::string post(std::string_view request)
 	{
 		std::string response;
-		curl_global_init(CURL_GLOBAL_DEFAULT);
-		CURL *curl = curl_easy_init();
-		if (not curl) {
-			std::cerr << "ERROR curl_easy_init\n";
-		} else {
-			curl_easy_setopt(curl, CURLOPT_URL,
-					"https://wandbox.org/api/compile.json");
-			curl_easy_setopt(curl, CURLOPT_WRITEFUNCTION, curl_callback);
-			curl_easy_setopt(curl, CURLOPT_WRITEDATA, &response);
-			curl_easy_setopt(curl, CURLOPT_CA_CACHE_TIMEOUT, 604800L);
-			curl_easy_setopt(curl, CURLOPT_USERAGENT, "wb/1.0");
-			curl_easy_setopt(curl, CURLOPT_POSTFIELDS, request.data());
-			curl_easy_setopt(curl, CURLOPT_POSTFIELDSIZE, request.size());
-			curl_slist* headers = nullptr;
-			headers = curl_slist_append(headers, "Content-type: application/json");
-			//TODO: Error checking?
-			curl_easy_setopt(curl, CURLOPT_HTTPHEADER, headers);
-			CURLcode res = curl_easy_perform(curl);
-			curl_slist_free_all(headers);
-			if (CURLE_OK != res) {
-				std::cerr << "ERROR curl_easy_perform: "
-					<< curl_easy_strerror(res) << '\n';
-			}
-			curl_easy_cleanup(curl);
+		curl_initer ci;
+		auto curl{make_curl()};
+		curl_easy_setopt(curl.get(), CURLOPT_URL,
+				"https://wandbox.org/api/compile.json");
+		curl_easy_setopt(curl.get(), CURLOPT_WRITEFUNCTION, curl_callback);
+		curl_easy_setopt(curl.get(), CURLOPT_WRITEDATA, &response);
+		curl_easy_setopt(curl.get(), CURLOPT_CA_CACHE_TIMEOUT, 604800L);
+		curl_easy_setopt(curl.get(), CURLOPT_USERAGENT, "wandboxit/1.0");
+		curl_easy_setopt(curl.get(), CURLOPT_POSTFIELDS, request.data());
+		curl_easy_setopt(curl.get(), CURLOPT_POSTFIELDSIZE, request.size());
+		slist headers;
+		headers.append("Content-type: application/json");
+		curl_easy_setopt(curl.get(), CURLOPT_HTTPHEADER, headers.list);
+		CURLcode rc = curl_easy_perform(curl.get());
+		if (CURLE_OK != rc) {
+			throw std::runtime_error{"curl_easy_perform: "s + curl_easy_strerror(rc)};
 		}
-		curl_global_cleanup();
 		return response;
 	}
 }
