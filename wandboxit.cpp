@@ -7,6 +7,7 @@
 #include <iterator>
 #include <fstream>
 #include <vector>
+#include <set>
 
 using namespace std::literals;
 
@@ -81,6 +82,25 @@ namespace {
         return response;
     }
 
+    std::string get_info()
+    {
+        std::string response;
+        curl_initer ci;
+        auto curl{make_curl()};
+        curl_easy_setopt(curl.get(), CURLOPT_URL,
+                "https://wandbox.org/api/list.json");
+        curl_easy_setopt(curl.get(), CURLOPT_WRITEFUNCTION, curl_callback);
+        curl_easy_setopt(curl.get(), CURLOPT_WRITEDATA, &response);
+        curl_easy_setopt(curl.get(), CURLOPT_CA_CACHE_TIMEOUT, 604800L);
+        curl_easy_setopt(curl.get(), CURLOPT_USERAGENT, "wandboxit/1.0");
+        CURLcode rc = curl_easy_perform(curl.get());
+        if (CURLE_OK != rc) {
+            throw std::runtime_error{
+                "curl_easy_perform: "s + curl_easy_strerror(rc)};
+        }
+        return response;
+    }
+
     bool starts_with(const std::string& s, std::string_view prefix)
     {
         return 0 == s.rfind(prefix, 0);
@@ -106,11 +126,84 @@ namespace {
         args.erase(found);
         return value;
     }
+
+    auto get_languages(const nlohmann::json& info)
+    {
+        //TODO: Use JSON Pointer for query? Doesn't look like much help.
+        // jq '.[].language' list.json | sort -u
+        std::set<std::string> languages;
+        // We get an array inside an array?
+        for (const auto& outer: info) {
+            //TODO: std::copy?
+            for (const auto& entry: outer) {
+                languages.insert(entry["language"]);
+            }
+        }
+        return languages;
+    }
+
+    auto get_compilers(const nlohmann::json& info, const std::string& language)
+    {
+        // jq '.[] | select(.language=="C++") | .name' list.json
+        std::vector<std::string> compilers;
+        for (const auto& outer: info) {
+            for (const auto& entry: outer) {
+                if (entry["language"] == language) {
+                    compilers.push_back(entry["name"]);
+                }
+            }
+        }
+        return compilers;
+    }
+
+    auto get_standards(const nlohmann::json& info, const std::string& compiler)
+    {
+        //TODO: Surely there's a better way.
+        // jq '.[] | select(.name=="gcc-head") | .switches[] | select(.name=="std-cxx") | .options[].name'
+        std::vector<std::string> standards;
+        for (const auto& outer: info) {
+            for (const auto& inner: outer) {
+                auto name{inner["name"].template get<std::string>()};
+                if (name == compiler) {
+                    for (const auto& switch_entry: inner["switches"]) {
+                        auto name{
+                            switch_entry["name"].template get<std::string>()};
+                        if (("std-cxx" == name)
+                                or ("std-c" == name))
+                        {
+                            for (const auto& option: switch_entry["options"]) {
+                                auto name{option["name"].template
+                                    get<std::string>()};
+                                standards.push_back(name);
+                            }
+                        }
+                    }
+                }
+            }
+        }
+        return standards;
+    }
 }
 
 int main(const int argc, const char** argv)
 {
+#if 0
     //TODO: An options to get language, compiler, and standard options.
+    std::string info{get_info()};
+    auto jinfo{nlohmann::json::parse(info)};
+    auto languages{get_languages(jinfo)};
+    for (const auto& language: languages) {
+        std::cout << language << '\n';
+    }
+    auto compilers{get_compilers(jinfo, "C++")};
+    for (const auto& compiler: compilers) {
+        std::cout << compiler << '\n';
+    }
+    auto standards{get_standards(jinfo, "gcc-head")};
+    for (const auto& standard: standards) {
+        std::cout << standard << '\n';
+    }
+#endif
 
     // The fstream ctors still don't take string_views!?
     // So we'll parse the args into strings instead.
