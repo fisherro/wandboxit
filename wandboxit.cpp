@@ -1,4 +1,6 @@
 /* Send code to be compiled and run by wandbox. */
+//TODO: Add option to turn colorized output on/off
+//TODO: Add option to strip ANSI color codes from the response
 
 #include "nlohmann/json.hpp"
 #include <curl/curl.h>
@@ -116,7 +118,6 @@ namespace {
             std::vector<std::string>& args,
             const std::string& option_name)
     {
-        //TODO: Handle if the same option is given twice.
         std::string option{"--" + option_name + "="};
         auto found{
             std::find_if(args.begin(), args.end(),
@@ -140,12 +141,10 @@ namespace {
 
     auto get_languages(const nlohmann::json& info)
     {
-        //TODO: Use JSON Pointer for query? Doesn't look like much help.
         // jq '.[].language' list.json | sort -u
         std::set<std::string> languages;
         // We get an array inside an array?
         for (const auto& outer: info) {
-            //TODO: std::copy?
             for (const auto& entry: outer) {
                 languages.insert(entry["language"]);
             }
