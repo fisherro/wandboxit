@@ -194,28 +194,23 @@ namespace {
         }
         return standards;
     }
+
+    void usage(std::string_view command)
+    {
+        std::cout
+            << "usage: " << command
+            << " [--compiler=compiler] [--std=standard] file\n"
+            << "   or: " << command
+            << " --list-languages\n"
+            << "   or: " << command
+            << " --list-compilers=language\n"
+            << "   or: " << command
+            << " --list-standards=compiler\n";
+    }
 }
 
 int main(const int argc, const char** argv)
 {
-#if 0
-    //TODO: An options to get language, compiler, and standard options.
-    std::string info{get_info()};
-    auto jinfo{nlohmann::json::parse(info)};
-    auto languages{get_languages(jinfo)};
-    for (const auto& language: languages) {
-        std::cout << language << '\n';
-    }
-    auto compilers{get_compilers(jinfo, "C++")};
-    for (const auto& compiler: compilers) {
-        std::cout << compiler << '\n';
-    }
-    auto standards{get_standards(jinfo, "gcc-head")};
-    for (const auto& standard: standards) {
-        std::cout << standard << '\n';
-    }
-#endif
-
     // The fstream ctors still don't take string_views!?
     // So we'll parse the args into strings instead.
     std::vector<std::string> args(argv + 1, argv + argc);
@@ -226,23 +221,15 @@ int main(const int argc, const char** argv)
         std::copy(list.begin(), list.end(),
                 std::ostream_iterator<std::string>(std::cout, "\n"));
         return EXIT_SUCCESS;
-    } else if (get_flag(args, "list-compilers")) {
-        if (args.size() != 1) {
-            std::cerr << "Give me the name of a language!\n";
-            return EXIT_FAILURE;
-        }
+    } else if (auto lang{get_option(args, "list-compilers")}; lang) {
         auto info{nlohmann::json::parse(get_info())};
-        auto list{get_compilers(info, args[0])};
+        auto list{get_compilers(info, *lang)};
         std::copy(list.begin(), list.end(),
                 std::ostream_iterator<std::string>(std::cout, "\n"));
         return EXIT_SUCCESS;
-    } else if (get_flag(args, "list-standards")) {
-        if (args.size() != 1) {
-            std::cerr << "Give me the name of a compiler!\n";
-            return EXIT_FAILURE;
-        }
+    } else if (auto compiler{get_option(args, "list-standards")}; compiler) {
         auto info{nlohmann::json::parse(get_info())};
-        auto list{get_standards(info, args[0])};
+        auto list{get_standards(info, *compiler)};
         std::copy(list.begin(), list.end(),
                 std::ostream_iterator<std::string>(std::cout, "\n"));
          return EXIT_SUCCESS;
@@ -254,6 +241,7 @@ int main(const int argc, const char** argv)
 
     if (args.size() != 1) {
         std::cerr << "Give me the name of a single file to compile!\n";
+        usage(argv[0]);
         return EXIT_FAILURE;
     }
 
